@@ -1200,6 +1200,7 @@ function updateTotalCounter(){
   el.textContent=`${total.toLocaleString()} contatos`;
   el.style.display=total>0?'inline-block':'none';
 }
+function renderResumoBase(){
   const el=document.getElementById('resumo-base');
   if(!el||currentRole!=='admin')return;
 
