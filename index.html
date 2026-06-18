@@ -357,6 +357,7 @@ tr.obs-row td:first-child{border-left:3px solid #3C3489}
         <button class="btn" onclick="openImportModal()">⬆ Planilha</button>
         <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFile(event)">
         <button class="btn" onclick="openExport()">⬇ Exportar</button>
+        <button class="btn btn-danger" onclick="apagarTodos()" style="font-size:11px">🗑 Limpar base</button>
       </div>
       <button class="btn" onclick="doLogout()">Sair</button>
     </div>
@@ -730,6 +731,22 @@ function showProgressOverlay(atual,total){
 }
 function hideProgressOverlay(){
   document.getElementById('progressOverlay').style.display='none';
+}
+
+window.apagarTodos=async function(){
+  if(currentRole!=='admin')return;
+  if(!confirm(`⚠️ Apagar TODOS os ${contacts.length} contatos da base?\n\nEsta ação não pode ser desfeita!`))return;
+  if(!confirm('Tem certeza? Todos os dados serão perdidos permanentemente.'))return;
+  showBanner('Apagando todos os contatos...','load');
+  const ids=contacts.map(c=>c.id);
+  const BATCH=500;
+  for(let i=0;i<ids.length;i+=BATCH){
+    await sb.from('contacts').delete().in('id',ids.slice(i,i+BATCH));
+  }
+  contacts=[];
+  render();renderResumoBase();updateTotalCounter();
+  showBanner('✅ Base limpa com sucesso','ok');
+  setTimeout(hideBanner,3000);
 }
 
 window.openImportModal=function(){
@@ -1421,47 +1438,15 @@ window.handleFile=async function(e){
       // mostra overlay de progresso
       showProgressOverlay(0,imported.length);
 
-      if(contacts.length>0&&!confirm('Adicionar à lista existente?\nCancelar = substituir todos')){
-        // importa primeiro, só apaga se der certo
-        showProgressOverlay(0,imported.length);
-        let totalSalvos=0;
-        let errou=false;
-        const BATCH=500;
-        for(let i=0;i<imported.length;i+=BATCH){
-          try{
-            const lote=imported.slice(i,i+BATCH);
-            const{error}=await sb.from('contacts').insert(lote);
-            if(error)throw error;
-            totalSalvos+=lote.length;
-            showProgressOverlay(totalSalvos,imported.length);
-          }catch(batchErr){
-            errou=true;
-            console.error('Erro batch:',batchErr);
-            alert('Erro ao importar: '+batchErr.message+'\n\nOs dados anteriores foram mantidos.');
-            break;
+      if(contacts.length>0&&!confirm('Adicionar à lista existente?\nCancelar = substituir (apenas '+sistemaImport+' · '+orgaoImport+')')){
+        // apaga só os do mesmo sistema E órgão
+        const idsApagar=contacts.filter(c=>c.sistema===sistemaImport&&c.orgao===orgaoImport).map(c=>c.id);
+        if(idsApagar.length>0){
+          const BDEL=500;
+          for(let i=0;i<idsApagar.length;i+=BDEL){
+            await sb.from('contacts').delete().in('id',idsApagar.slice(i,i+BDEL));
           }
         }
-        if(!errou){
-          // importou tudo — agora apaga os antigos
-          const idsNovos=new Set((await sb.from('contacts').select('id').order('created_at',{ascending:false}).limit(imported.length)).data?.map(r=>r.id)||[]);
-          // apaga todos exceto os recém inseridos
-          await db.contacts.deleteAll();
-          // re-insere os novos (já foram salvos acima, mas deleteAll apagou tudo)
-          // então re-insere
-          for(let i=0;i<imported.length;i+=BATCH){
-            const lote=imported.slice(i,i+BATCH);
-            await sb.from('contacts').insert(lote);
-          }
-        }
-        window.removeEventListener('beforeunload',beforeUnload);
-        hideProgressOverlay();
-        if(!errou){
-          const{data:novosContatos}=await sb.from('contacts').select('*').order('created_at',{ascending:true});
-          if(novosContatos){contacts=novosContatos;render();renderResumoBase();updateTotalCounter();}
-          showBanner(`${imported.length} contatos importados ✅ (${sistemaImport} · ${orgaoImport})`,'ok');
-          setTimeout(hideBanner,4000);
-        }
-        return;
       }
 
       // ADICIONAR à lista existente
