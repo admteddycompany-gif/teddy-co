@@ -1280,6 +1280,7 @@ function renderResumoBase(){
     </div>`:''}
   `;
 }
+function renderPagination(page,total){
   const el=document.getElementById('pagination');
   if(!el)return;
   if(total<=1){el.innerHTML='';return;}
